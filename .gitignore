@@ -55,3 +55,234 @@ __history/
 
 # Castalia statistics file
 *.stat
+
+unit pUnit1;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, DB, ADODB, StdCtrls, Grids, DBGrids, OleServer, ExcelXP, jpeg,
+  ExtCtrls, ComCtrls, DBXpress, FMTBcd, SqlExpr, TeEngine, TeeSurfa,
+  TeeProcs, Chart, Series;
+
+type
+  TForm1 = class(TForm)
+    ExcelApplication1: TExcelApplication;
+    ADOConnection1: TADOConnection;
+    ADOQuery9: TADOQuery;
+    ADOQuery11: TADOQuery;
+    SQLConnection1: TSQLConnection;
+    SQLQuery1: TSQLQuery;
+    Panel1: TPanel;
+    Panel2: TPanel;
+    Panel3: TPanel;
+    ProgressBar1: TProgressBar;
+    Image1: TImage;
+    Button6: TButton;
+    Button1: TButton;
+    PageControl2: TPageControl;
+    TabSheet5: TTabSheet;
+    TabSheet6: TTabSheet;
+    StringGrid1: TStringGrid;
+    Chart1: TChart;
+    TabSheet8: TTabSheet;
+    Chart2: TChart;
+    Series1: TSurfaceSeries;
+    Series2: TBarSeries;
+    TabSheet9: TTabSheet;
+    Chart3: TChart;
+    BarSeries1: TBarSeries;
+    procedure Button1Click(Sender: TObject);
+    procedure Button6Click(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  Form1: TForm1;
+implementation
+
+{$R *.dfm}
+
+procedure TForm1.Button1Click(Sender: TObject);
+var
+  i,j:integer;
+  a:array [1..100,1..999] of integer;
+  b:array [1..10] of integer;
+begin
+
+  for i := 1 to 10 do
+   begin
+     b[i]:=0;
+   end;
+
+  for i := 1 to 100 do
+    begin
+      for j :=200 to 500 do
+        begin
+          a[i,j]:=0;
+        end;
+    end;
+
+  ADOQuery9.close;                                                              //查單頭品號+批號列表
+  ADOQuery9.SQL.Clear;
+  ADOQuery9.SQL.add('SELECT ME001,ME002,ME007');
+  ADOQuery9.sql.add('FROM INVME');
+  ADOQuery9.sql.add('WHERE ME001>:s1');
+  ADOQuery9.sql.add('AND ME001<:s2');
+  ADOQuery9.sql.add('AND ME007=:s3');
+  ADOQuery9.sql.add('ORDER BY ME001,ME002');
+//  ADOQuery9.Parameters.parambyname('s1').VALUE:='4SC';
+  ADOQuery9.Parameters.parambyname('s1').VALUE:='4SC6P3991211';
+  ADOQuery9.Parameters.parambyname('s2').VALUE:='4SD';
+  ADOQuery9.Parameters.parambyname('s3').VALUE:='N';
+  ADOQuery9.open;
+  ProgressBar1.Max:=ADOQuery9.RecordCount;
+
+  if ADOQuery9.recordcount>0 then
+    begin
+      for i:=1 to ADOQuery9.recordcount do
+        begin                                                                   //查單身 出入+數量
+          ADOQuery11.close;                                                     //檢查品號批號庫別-數量異動紀錄
+          ADOQuery11.SQL.Clear;                                                 //MF008 I/O別 入=+1,出=-1 ,MF010 數量
+          ADOQuery11.SQL.add('select MF008,MF010');                             //ADO BUG MF008 都變正值
+          ADOQuery11.sql.add('from INVMF');
+          ADOQuery11.sql.add('where MF001=:s1');
+          ADOQuery11.sql.add('and MF002=:s2');
+          ADOQuery11.sql.add('and MF007=:s3');
+          ADOQuery11.sql.add('order by MF010');
+          ADOQuery11.Parameters.parambyname('s1').VALUE:=ADOQuery9.FieldByName('ME001').Value;
+          ADOQuery11.Parameters.parambyname('s2').VALUE:=ADOQuery9.FieldByName('ME002').Value;
+          ADOQuery11.Parameters.parambyname('s3').VALUE:='110';
+          ADOQuery11.open;
+          ADOQuery11.first;
+
+          SQLQuery1.Close;
+          SQLQuery1.SQL.Clear;
+          SQLQuery1.SQL.Add('select MF008,MF010');
+          SQLQuery1.sql.add('from INVMF');
+          SQLQuery1.sql.add('where MF001=:s1');
+          SQLQuery1.sql.add('and MF002=:s2');
+          SQLQuery1.sql.add('and MF007=:s3');
+          SQLQuery1.sql.add('order by MF010');
+          SQLQuery1.parambyname('s1').VALUE:=ADOQuery9.FieldByName('ME001').Value;
+          SQLQuery1.parambyname('s2').VALUE:=ADOQuery9.FieldByName('ME002').Value;
+          SQLQuery1.parambyname('s3').VALUE:='110';
+          SQLQuery1.open;
+          SQLQuery1.FIRST;
+
+          b[4]:=0;
+          FOR j:=1 to ADOQuery11.RECORDCOUNT DO
+            BEGIN
+              b[1]:=SQLQuery1.FieldByName('MF008').Value;                       //出入庫 +-1
+              b[2]:=ADOQuery11.FieldByName('MF010').Value;                      //數量
+              b[3]:=b[1]*b[2];                                                  //出入數量
+              b[4]:=b[4]+b[3];                                                  //品號+批號-庫存數量
+              ADOQuery11.NEXT;
+              SQLQuery1.NEXT;
+            END;
+
+          b[5]:=strtoint(copy(ADOQuery9.FieldByName('ME001').Value,9,2));       //廠商
+          IF copy(ADOQuery9.FieldByName('ME002').Value,1,2)<>'限'THEN
+          b[6]:=strtoint(copy(ADOQuery9.FieldByName('ME002').Value,1,3));       //w數
+
+          if (b[6]<500) then
+            begin
+              a[b[5],b[6]]:=a[b[5],b[6]]+b[4];                                  //廠商+W數-庫存量
+              a[b[5],500]:=a[b[5],500]+b[4];                                    //廠商-庫存量合計
+              a[100,b[6]]:=a[100,b[6]]+b[4];                                    //W數-庫存量合計
+              a[100,500]:=a[100,500]+b[4];
+            end;
+          ProgressBar1.position:=i;
+          ADOQuery9.next;
+        end;
+    end;
+
+  for i := 1 to 20 do
+    begin
+      StringGrid1.Cells[i,0]:=inttostr(i);
+      StringGrid1.Cells[i,251]:=inttostr(a[i,500]);
+      with Chart2 do
+        begin
+          Series2.AddXY(i,a[i,500]);
+        end;
+      for j :=200 to 449 do
+        begin
+          StringGrid1.Cells[0,j-199]:=inttostr(j);
+          StringGrid1.Cells[i,j-199]:=inttostr(a[i,j]);
+          StringGrid1.Cells[20,j-199]:=inttostr(a[100,j]);
+          if (j>350) and (j<435)then
+            begin
+              with Chart2 do
+                begin
+                  barseries1.AddXY(j,a[100,j]);
+                end;
+            end;
+          with Chart1 do
+            begin
+              series1.AddXYZ(i,j,a[i,j])
+            end;
+        end;
+    end;
+
+  StringGrid1.Cells[20,0]:='合計';
+  StringGrid1.Cells[0,251]:='合計';
+  StringGrid1.Cells[20,251]:=inttostr(a[100,500]);                              //庫存量合計  含 133、991
+
+  StringGrid1.Cells[1,0]:='Gintech';
+  StringGrid1.Cells[2,0]:='tainergy';
+  StringGrid1.Cells[3,0]:='Neosolar';
+  StringGrid1.Cells[4,0]:='Mosel';
+  StringGrid1.Cells[5,0]:='Ever Energy';
+  StringGrid1.Cells[6,0]:='Solartech';
+  StringGrid1.Cells[7,0]:='DelSolar';
+  StringGrid1.Cells[8,0]:='Q-Cell';
+  StringGrid1.Cells[9,0]:='TEG';
+  StringGrid1.Cells[10,0]:='Unitech';
+  StringGrid1.Cells[11,0]:='Motech';
+  StringGrid1.Cells[12,0]:='E-Ton';
+  StringGrid1.Cells[13,0]:='Bosch';
+  StringGrid1.Cells[14,0]:='華昌光伏';
+  StringGrid1.Cells[15,0]:='鴻圖工程';
+  StringGrid1.Cells[16,0]:='TSI';
+  StringGrid1.Cells[17,0]:='遠康';
+  StringGrid1.Cells[18,0]:='劭邦';
+  StringGrid1.Cells[19,0]:='英穩達';
+//  StringGrid1.Cells[20,0]:='元晶';
+//  StringGrid1.Cells[21,0]:='KPE';
+//  StringGrid1.Cells[22,0]:='bigsun';
+//  StringGrid1.Cells[99,0]:='庚賢';
+
+  ProgressBar1.position:=0;
+end;
+
+procedure TForm1.Button6Click(Sender: TObject);
+VAR
+  asheet:variant;
+  i,j,l:INTEGER;
+begin
+  ExcelApplication1.Visible[0]:=true;
+  ExcelApplication1.Workbooks.Add(xlwbatworksheet,0);
+  asheet:= ExcelApplication1.Worksheets.Item[1];
+  ProgressBar1.Max:=StringGrid1.RowCount;
+  l:=2;
+  FOR i := 0 to StringGrid1.RowCount-1 do
+    begin
+      for j := 0 to StringGrid1.colCount-1  do
+        begin
+          IF (i=0) THEN asheet.cells[i+1,j+1].value:=StringGrid1.Cells[j,i];
+          IF (i>0) and (STRTOINT(StringGrid1.Cells[20,i])>0) THEN
+            begin
+              asheet.cells[l,j+1].value:=StringGrid1.Cells[j,i];
+            end;
+        end;
+      IF (i>0) and (STRTOINT(StringGrid1.Cells[20,i])>0) THEN l:=l+1;
+      ProgressBar1.position:=i;
+    end;
+  ProgressBar1.position:=0;
+end;
+
+end.
